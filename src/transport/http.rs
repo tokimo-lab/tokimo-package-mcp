@@ -45,11 +45,7 @@ struct HttpInner {
 }
 
 impl HttpTransport {
-    pub fn new(
-        server_name: &str,
-        url: String,
-        headers: HashMap<String, String>,
-    ) -> Result<Self, McpError> {
+    pub fn new(server_name: &str, url: String, headers: HashMap<String, String>) -> Result<Self, McpError> {
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
             // No overall request timeout; long-lived SSE responses are allowed.
@@ -144,20 +140,18 @@ impl McpTransport for HttpTransport {
                 parse_sse_stream(resp, tx, &log_target).await;
             } else {
                 match resp.text().await {
-                    Ok(body) if !body.trim().is_empty() => {
-                        match serde_json::from_str::<Value>(body.trim()) {
-                            Ok(v) => {
-                                let _ = tx.send(v).await;
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    target: "mcp::transport",
-                                    target_log = %log_target,
-                                    "invalid JSON body: {e} :: {body}",
-                                );
-                            }
+                    Ok(body) if !body.trim().is_empty() => match serde_json::from_str::<Value>(body.trim()) {
+                        Ok(v) => {
+                            let _ = tx.send(v).await;
                         }
-                    }
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "mcp::transport",
+                                target_log = %log_target,
+                                "invalid JSON body: {e} :: {body}",
+                            );
+                        }
+                    },
                     Ok(_) => {}
                     Err(e) => {
                         tracing::warn!(target: "mcp::transport", target_log = %log_target, "read body failed: {e}");
@@ -176,11 +170,7 @@ impl McpTransport for HttpTransport {
     async fn close(&self) {
         // Best-effort: DELETE the session to let the server reclaim resources.
         if let Some(sid) = self.inner.session_id.lock().await.clone() {
-            let req = self
-                .inner
-                .client
-                .delete(&self.inner.url)
-                .header("mcp-session-id", sid);
+            let req = self.inner.client.delete(&self.inner.url).header("mcp-session-id", sid);
             let _ = req.send().await;
         }
         tracing::debug!(target: "mcp::transport", target_log = %self.inner.log_target, "http transport closed");

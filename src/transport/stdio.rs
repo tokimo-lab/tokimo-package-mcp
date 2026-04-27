@@ -114,9 +114,7 @@ impl StdioTransport {
 impl McpTransport for StdioTransport {
     async fn send(&self, msg: Value) -> Result<(), McpError> {
         let mut guard = self.inner.stdin.lock().await;
-        let stdin = guard
-            .as_mut()
-            .ok_or(McpError::ConnectionLost)?;
+        let stdin = guard.as_mut().ok_or(McpError::ConnectionLost)?;
         let mut bytes = serde_json::to_vec(&msg)?;
         bytes.push(b'\n');
         stdin.write_all(&bytes).await?;

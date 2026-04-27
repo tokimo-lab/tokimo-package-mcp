@@ -16,6 +16,6 @@ pub use client::McpClient;
 pub use connection::{McpConnection, McpConnectionState};
 pub use error::McpError;
 pub use types::{
-    CallToolResult, ClientInfo, InitializeResult, McpAnnotations, McpContent, McpNotification,
-    McpPrompt, McpResource, McpTool, ReadResourceResult,
+    CallToolResult, ClientInfo, InitializeResult, McpAnnotations, McpContent, McpNotification, McpPrompt, McpResource,
+    McpTool, ReadResourceResult,
 };

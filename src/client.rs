@@ -21,8 +21,8 @@ use crate::error::McpError;
 use crate::protocol::{JSON_RPC_VERSION, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION};
 use crate::transport::McpTransport;
 use crate::types::{
-    CallToolResult, ClientInfo, InitializeResult, ListPromptsResult, ListResourcesResult,
-    ListToolsResult, McpNotification, McpPrompt, McpResource, McpTool, ReadResourceResult,
+    CallToolResult, ClientInfo, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    McpNotification, McpPrompt, McpResource, McpTool, ReadResourceResult,
 };
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_mins(1);
@@ -100,9 +100,7 @@ impl McpClient {
                 let params = msg.params.unwrap_or(Value::Null);
                 let notif = match method.as_str() {
                     "notifications/tools/list_changed" => McpNotification::ToolsListChanged,
-                    "notifications/resources/list_changed" => {
-                        McpNotification::ResourcesListChanged
-                    }
+                    "notifications/resources/list_changed" => McpNotification::ResourcesListChanged,
                     "notifications/prompts/list_changed" => McpNotification::PromptsListChanged,
                     "notifications/progress" => McpNotification::Progress {
                         token: params.get("progressToken").cloned().unwrap_or(Value::Null),
@@ -179,8 +177,7 @@ impl McpClient {
         let raw = self.send_request("initialize", params).await?;
         let res: InitializeResult = serde_json::from_value(raw)?;
         // MCP requires `notifications/initialized` after handshake.
-        self.send_notification("notifications/initialized", json!({}))
-            .await?;
+        self.send_notification("notifications/initialized", json!({})).await?;
         Ok(res)
     }
 
@@ -195,9 +192,8 @@ impl McpClient {
             .send_request("resources/list", json!({}))
             .await
             .unwrap_or(Value::Null);
-        let res: ListResourcesResult = serde_json::from_value(raw).unwrap_or(ListResourcesResult {
-            resources: Vec::new(),
-        });
+        let res: ListResourcesResult =
+            serde_json::from_value(raw).unwrap_or(ListResourcesResult { resources: Vec::new() });
         Ok(res.resources)
     }
 
@@ -206,16 +202,11 @@ impl McpClient {
             .send_request("prompts/list", json!({}))
             .await
             .unwrap_or(Value::Null);
-        let res: ListPromptsResult =
-            serde_json::from_value(raw).unwrap_or(ListPromptsResult { prompts: Vec::new() });
+        let res: ListPromptsResult = serde_json::from_value(raw).unwrap_or(ListPromptsResult { prompts: Vec::new() });
         Ok(res.prompts)
     }
 
-    pub async fn call_tool(
-        &self,
-        name: &str,
-        arguments: Value,
-    ) -> Result<CallToolResult, McpError> {
+    pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<CallToolResult, McpError> {
         let params = json!({ "name": name, "arguments": arguments });
         let raw = self.send_request("tools/call", params).await?;
         let res: CallToolResult = serde_json::from_value(raw)?;
