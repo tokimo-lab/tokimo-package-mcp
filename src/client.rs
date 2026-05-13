@@ -79,7 +79,15 @@ impl McpClient {
         };
 
         match (msg.id, msg.result, msg.error, msg.method) {
-            // response to our request
+            // server-initiated request (id + method, no result/error).
+            // MCP servers send these e.g. for `roots/list` or
+            // `sampling/createMessage`. We MUST reply or the server
+            // hangs waiting — which manifests as tool calls timing
+            // out / the connection appearing dead.
+            (Some(id), None, None, Some(method)) => {
+                self.handle_server_request(id, &method).await;
+            }
+            // response to one of our requests
             (Some(id), result, error, _) => {
                 let mut pending = self.pending.lock().await;
                 if let Some(tx) = pending.remove(&id) {
@@ -121,6 +129,46 @@ impl McpClient {
             _ => {
                 tracing::debug!(target: "mcp::client", target_log = %self.log_target, "ignored frame");
             }
+        }
+    }
+
+    /// Reply to a server-initiated JSON-RPC request. We support a
+    /// minimal whitelist (`roots/list`) and answer everything else
+    /// with `MethodNotFound` so the server's pending future resolves
+    /// instead of hanging the whole MCP session.
+    async fn handle_server_request(&self, id: u64, method: &str) {
+        let response = match method {
+            // We don't expose any filesystem roots to MCP servers.
+            "roots/list" => json!({
+                "jsonrpc": JSON_RPC_VERSION,
+                "id": id,
+                "result": { "roots": [] }
+            }),
+            // We don't support sampling (LLM round-trips initiated by
+            // the server) yet. Reply with an error so the server can
+            // fall back gracefully.
+            _ => {
+                tracing::debug!(
+                    target: "mcp::client",
+                    target_log = %self.log_target,
+                    "server-initiated request method={method} id={id} -> MethodNotFound"
+                );
+                json!({
+                    "jsonrpc": JSON_RPC_VERSION,
+                    "id": id,
+                    "error": {
+                        "code": -32601,
+                        "message": format!("method not found: {method}")
+                    }
+                })
+            }
+        };
+        if let Err(e) = self.transport.send(response).await {
+            tracing::warn!(
+                target: "mcp::client",
+                target_log = %self.log_target,
+                "failed to reply to server-initiated request id={id} method={method}: {e}"
+            );
         }
     }
 
