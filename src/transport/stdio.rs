@@ -2,6 +2,7 @@
 //! stdin, parses JSON-per-line from its stdout.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -32,7 +33,8 @@ impl StdioTransport {
         args: &[String],
         env: &HashMap<String, String>,
     ) -> Result<Self, McpError> {
-        let mut cmd = Command::new(command);
+        let resolved_command = resolve_command(command)?;
+        let mut cmd = command_for_resolved_command(&resolved_command);
         cmd.args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -108,6 +110,51 @@ impl StdioTransport {
             }),
         })
     }
+}
+
+fn resolve_command(command: &str) -> Result<PathBuf, McpError> {
+    match which::which(command) {
+        Ok(path) => Ok(path),
+        Err(which::Error::CannotFindBinaryPath) => Err(McpError::other(command_not_found_message(command))),
+        Err(err) => Err(McpError::other(format!(
+            "failed to resolve MCP server command '{command}' from PATH: {err}"
+        ))),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn command_for_resolved_command(resolved: &Path) -> Command {
+    if is_windows_cmd_or_bat(resolved) {
+        let mut cmd = Command::new("cmd.exe");
+        cmd.arg("/C").arg(resolved);
+        cmd
+    } else {
+        Command::new(resolved)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn command_for_resolved_command(resolved: &Path) -> Command {
+    Command::new(resolved)
+}
+
+#[cfg(target_os = "windows")]
+fn is_windows_cmd_or_bat(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat"))
+}
+
+#[cfg(target_os = "windows")]
+fn command_not_found_message(command: &str) -> String {
+    format!(
+        "program '{command}' not found in PATH (looked for {command}, {command}.cmd, {command}.bat, {command}.exe on Windows)"
+    )
+}
+
+#[cfg(not(target_os = "windows"))]
+fn command_not_found_message(command: &str) -> String {
+    format!("program '{command}' not found in PATH")
 }
 
 #[async_trait]
